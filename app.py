@@ -14,7 +14,6 @@ import os
 st.set_page_config(page_title="Chat with Alina 💬")
 
 nlp = spacy.load("en_core_web_sm")
-nlp.max_length = 1200000  # Increase max length for large documents
 
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
 
@@ -34,53 +33,48 @@ def get_pdf_text(pdf_docs):
 
 # Function to split text based on semantic similarity and NER
 def advanced_chunking(text):
-    # Splitting the text into smaller chunks if it exceeds max length
-    if len(text) > nlp.max_length:
-        text_chunks = [text[i:i+nlp.max_length] for i in range(0, len(text), nlp.max_length)]
-    else:
-        text_chunks = [text]
+    # Splitting the text into sentences using spaCy
+    doc = nlp(text)
+    sentences = [sent.text for sent in doc.sents]
 
-    final_chunks = []
-
-    for chunk in text_chunks:
-        doc = nlp(chunk)
-        sentences = [sent.text for sent in doc.sents]
-
-        # Applying NER to extract important entities
-        ner_entities = [ent.text for ent in doc.ents]
-
-        # Computing embeddings for sentences using Sentence-BERT
-        sentence_embeddings = sentence_model.encode(sentences)
-        
-        # Computing pairwise cosine similarity between sentence embeddings
-        similarity_matrix = cosine_similarity(sentence_embeddings)
-        
-        # Grouping sentences based on semantic similarity
-        chunks = []
-        current_chunk = []
-        current_chunk_embedding = None
-        
-        for i, sentence in enumerate(sentences):
-            if current_chunk_embedding is None:
+    # Applying NER to extract important entities
+    ner_entities = []
+    for ent in doc.ents:
+        ner_entities.append(ent.text)
+    
+    # Computing embeddings for sentences using Sentence-BERT
+    sentence_embeddings = sentence_model.encode(sentences)
+    
+    # Computing pairwise cosine similarity between sentence embeddings
+    similarity_matrix = cosine_similarity(sentence_embeddings)
+    
+    # Grouping sentences based on semantic similarity
+    chunks = []
+    current_chunk = []
+    current_chunk_embedding = None
+    
+    for i, sentence in enumerate(sentences):
+        if current_chunk_embedding is None:
+            current_chunk.append(sentence)
+            current_chunk_embedding = sentence_embeddings[i]
+        else:
+            similarity_score = cosine_similarity([current_chunk_embedding], [sentence_embeddings[i]])[0][0]
+            if similarity_score > 0.8:  # Threshold for semantic similarity
                 current_chunk.append(sentence)
-                current_chunk_embedding = sentence_embeddings[i]
+                # Updating the current chunk embedding (average embeddings for new chunk)
+                current_chunk_embedding = (current_chunk_embedding + sentence_embeddings[i]) / 2
             else:
-                similarity_score = cosine_similarity([current_chunk_embedding], [sentence_embeddings[i]])[0][0]
-                if similarity_score > 0.8:  # Threshold for semantic similarity
-                    current_chunk.append(sentence)
-                    current_chunk_embedding = (current_chunk_embedding + sentence_embeddings[i]) / 2
-                else:
-                    chunks.append(" ".join(current_chunk))
-                    current_chunk = [sentence]
-                    current_chunk_embedding = sentence_embeddings[i]
+                chunks.append(" ".join(current_chunk))
+                current_chunk = [sentence]
+                current_chunk_embedding = sentence_embeddings[i]
 
-        if current_chunk:
-            chunks.append(" ".join(current_chunk))
-        
-        # Filter chunks containing relevant entities
-        for chunk in chunks:
-            if any(entity in chunk for entity in ner_entities):
-                final_chunks.append(chunk)
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+    
+    final_chunks = []
+    for chunk in chunks:
+        if any(entity in chunk for entity in ner_entities):
+            final_chunks.append(chunk)
     
     return final_chunks
 
@@ -98,7 +92,8 @@ def get_conversational_chain(vector_store):
 
 # Function to handle user inputs and display chat history
 def user_input(user_question):
-    response = st.session_state.conversation({'question': user_question})
+    # Use the predict method to get a response
+    response = st.session_state.conversation.predict(question=user_question)
     st.session_state.chatHistory = response['chat_history']
     
     for i, message in enumerate(st.session_state.chatHistory):
