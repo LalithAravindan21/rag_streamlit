@@ -11,7 +11,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 import spacy
 import os
 
-st.set_page_config(page_title="Chat with Alina 💬")
+st.set_page_config(page_title="Chat with Multilpe PDF's💬")
 
 nlp = spacy.load("en_core_web_sm")
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -93,7 +93,7 @@ def user_input(user_question):
 
 # Main function for the app
 def main():
-    st.header("Chat with Alina 💬")
+    st.header("Chat with Multilpe PDF's💬")
 
     # Sidebar for uploading PDF documents
     with st.sidebar:
