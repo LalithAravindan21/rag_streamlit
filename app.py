@@ -30,7 +30,6 @@ def get_pdf_text(pdf_docs):
 
 # Updated function to handle long text inputs by splitting into chunks
 def advanced_chunking(text):
-    # Splitting the text into manageable chunks
     max_length = 50000  # Adjust based on memory limits and needs
     text_chunks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
     
@@ -38,14 +37,9 @@ def advanced_chunking(text):
     for chunk in text_chunks:
         doc = nlp(chunk)
         sentences = [sent.text for sent in doc.sents]
-        
-        # Applying NER to extract important entities
         ner_entities = [ent.text for ent in doc.ents]
-        
-        # Computing embeddings for sentences using Sentence-BERT
         sentence_embeddings = sentence_model.encode(sentences)
         
-        # Group sentences by similarity
         current_chunk = []
         current_chunk_embedding = None
         for i, sentence in enumerate(sentences):
@@ -82,14 +76,20 @@ def get_conversational_chain(vector_store):
 
 # Function to handle user inputs and display chat history
 def user_input(user_question):
-    response = st.session_state.conversation({'question': user_question})
-    st.session_state.chatHistory = response['chat_history']
-    
-    for i, message in enumerate(st.session_state.chatHistory):
-        if i % 2 == 0:
-            st.write("User: ", message.content)
-        else:
-            st.write("Alina: ", message.content)
+    if st.session_state.conversation:
+        try:
+            response = st.session_state.conversation({'question': user_question})
+            st.session_state.chatHistory = response['chat_history']
+            
+            for i, message in enumerate(st.session_state.chatHistory):
+                if i % 2 == 0:
+                    st.write("User: ", message.content)
+                else:
+                    st.write("Alina: ", message.content)
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
+    else:
+        st.warning("Please upload and process a document first.")
 
 # Main function for the app
 def main():
