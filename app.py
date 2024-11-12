@@ -14,12 +14,9 @@ import os
 st.set_page_config(page_title="Chat with Alina 💬")
 
 nlp = spacy.load("en_core_web_sm")
-
 sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
-
 os.environ['GOOGLE_API_KEY'] = "AIzaSyBVi-KWLLyIT23lpIlb9zZ_eXKQVaJdhE0"
 genai.configure(api_key=os.environ['GOOGLE_API_KEY'])
-
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash")
 
 # Function to extract text from PDF documents
@@ -31,51 +28,44 @@ def get_pdf_text(pdf_docs):
             text += page.extract_text()
     return text
 
-# Function to split text based on semantic similarity and NER
+# Updated function to handle long text inputs by splitting into chunks
 def advanced_chunking(text):
-    # Splitting the text into sentences using spaCy
-    doc = nlp(text)
-    sentences = [sent.text for sent in doc.sents]
-
-    # Applying NER to extract important entities
-    ner_entities = []
-    for ent in doc.ents:
-        ner_entities.append(ent.text)
+    # Splitting the text into manageable chunks
+    max_length = 50000  # Adjust based on memory limits and needs
+    text_chunks = [text[i:i + max_length] for i in range(0, len(text), max_length)]
     
-    # Computing embeddings for sentences using Sentence-BERT
-    sentence_embeddings = sentence_model.encode(sentences)
-    
-    # Computing pairwise cosine similarity between sentence embeddings
-    similarity_matrix = cosine_similarity(sentence_embeddings)
-    
-    # Grouping sentences based on semantic similarity
-    chunks = []
-    current_chunk = []
-    current_chunk_embedding = None
-    
-    for i, sentence in enumerate(sentences):
-        if current_chunk_embedding is None:
-            current_chunk.append(sentence)
-            current_chunk_embedding = sentence_embeddings[i]
-        else:
-            similarity_score = cosine_similarity([current_chunk_embedding], [sentence_embeddings[i]])[0][0]
-            if similarity_score > 0.8:  # Threshold for semantic similarity
+    processed_chunks = []
+    for chunk in text_chunks:
+        doc = nlp(chunk)
+        sentences = [sent.text for sent in doc.sents]
+        
+        # Applying NER to extract important entities
+        ner_entities = [ent.text for ent in doc.ents]
+        
+        # Computing embeddings for sentences using Sentence-BERT
+        sentence_embeddings = sentence_model.encode(sentences)
+        
+        # Group sentences by similarity
+        current_chunk = []
+        current_chunk_embedding = None
+        for i, sentence in enumerate(sentences):
+            if current_chunk_embedding is None:
                 current_chunk.append(sentence)
-                # Updating the current chunk embedding (average embeddings for new chunk)
-                current_chunk_embedding = (current_chunk_embedding + sentence_embeddings[i]) / 2
-            else:
-                chunks.append(" ".join(current_chunk))
-                current_chunk = [sentence]
                 current_chunk_embedding = sentence_embeddings[i]
+            else:
+                similarity_score = cosine_similarity([current_chunk_embedding], [sentence_embeddings[i]])[0][0]
+                if similarity_score > 0.8:
+                    current_chunk.append(sentence)
+                    current_chunk_embedding = (current_chunk_embedding + sentence_embeddings[i]) / 2
+                else:
+                    processed_chunks.append(" ".join(current_chunk))
+                    current_chunk = [sentence]
+                    current_chunk_embedding = sentence_embeddings[i]
 
-    if current_chunk:
-        chunks.append(" ".join(current_chunk))
-    
-    final_chunks = []
-    for chunk in chunks:
-        if any(entity in chunk for entity in ner_entities):
-            final_chunks.append(chunk)
-    
+        if current_chunk:
+            processed_chunks.append(" ".join(current_chunk))
+
+    final_chunks = [chunk for chunk in processed_chunks if any(entity in chunk for entity in ner_entities)]
     return final_chunks
 
 # Function to generate vector embeddings and store them in FAISS
@@ -92,8 +82,7 @@ def get_conversational_chain(vector_store):
 
 # Function to handle user inputs and display chat history
 def user_input(user_question):
-    # Use the predict method to get a response
-    response = st.session_state.conversation.predict(question=user_question)
+    response = st.session_state.conversation({'question': user_question})
     st.session_state.chatHistory = response['chat_history']
     
     for i, message in enumerate(st.session_state.chatHistory):
